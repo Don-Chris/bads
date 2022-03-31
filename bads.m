@@ -1,4 +1,4 @@
-function [x,fval,exitflag,output,optimState,gpstruct] = bads(fun,x0,LB,UB,PLB,PUB,nonbcon,options,varargin)
+function [x,fval,exitflag,output,optimState,gpstruct] = bads(fun,x0,LB,UB,PLB,PUB,nonbcon,varargin)
 %BADS Constrained optimization using Bayesian Adaptive Direct Search (v1.0.6)
 %   BADS attempts to solve problems of the form:
 %       min F(X)  subject to:  LB <= X <= UB
@@ -77,10 +77,6 @@ function [x,fval,exitflag,output,optimState,gpstruct] = bads(fun,x0,LB,UB,PLB,PU
 %   [X,FVAL,EXITFLAG,OUTPUT,OPTIMSTATE,GPSTRUCT] = BADS(...) returns the
 %   Gaussian process (GP) structure GPSTRUCT.
 %
-%   OPTIONS = BADS('defaults') returns a basic default OPTIONS structure.
-%
-%   EXITFLAG = BADS('test') runs a battery of tests. Here EXITFLAG is 0 if
-%   everything works correctly.
 %
 %   Examples:
 %    FUN can be a function handle (using @)
@@ -126,7 +122,7 @@ function [x,fval,exitflag,output,optimState,gpstruct] = bads(fun,x0,LB,UB,PLB,PU
 %   (arXiv preprint: https://arxiv.org/abs/1705.04405).
 %
 %   See also BADS_EXAMPLES, @.
-
+%
 %--------------------------------------------------------------------------
 % BADS: Bayesian Adaptive Direct Search for nonlinear function minimization.
 % To be used under the terms of the GNU General Public License 
@@ -140,17 +136,13 @@ function [x,fval,exitflag,output,optimState,gpstruct] = bads(fun,x0,LB,UB,PLB,PU
 %   Code repository: https://github.com/lacerbi/bads
 %--------------------------------------------------------------------------
 
-% Old syntax X = BADS(FUN,X0,LB,UB,PLB,PUB,OPTIONS) should work fine but 
-% users are encouraged to update to new syntax of BADS which takes seventh 
-% argument as NONBCON and OPTIONS is passed as eight argument.
-
 %% Start timer
 
 t0 = tic;
 
-%% Basic default options
 
-defopts.Display                 = 'iter         % Level of display ("iter", "notify", "final", or "off")';
+%% Basic default options
+defopts.Display                 = 'iter';         % Level of display ("iter", "notify", "final", or "off")
 defopts.MaxIter                 = '200*nvars    % Max number of iterations';
 defopts.MaxFunEvals             = '500*nvars    % Max number of objective fcn evaluations';
 defopts.PeriodicVars            = '[]           % Array with indices of periodic variables';
@@ -164,23 +156,8 @@ defopts.SpecifyTargetNoise      = 'no           % Target function returns noise 
 defopts.NoiseFinalSamples       = '10           % Samples to estimate FVAL at the end (for noisy objectives)';
 defopts.OptimToolbox            = '[]           % Use Optimization Toolbox (if empty, determine at runtime)';
 
-%% If called with no arguments or with 'defaults', return default options
-if nargout <= 1 && (nargin == 0 || (nargin == 1 && ischar(fun) && strcmpi(fun,'defaults')))
-    if nargin < 1
-        fprintf('Basic default options returned (type "help bads" for help).\n');
-    end
-    x = defopts;
-    return;
-end
-
-%% If called with one argument which is 'test', run test
-if nargout <= 1 && nargin == 1 && ischar(fun) && strcmpi(fun,'test')
-    x = runtest();
-    return;
-end
 
 %% Advanced options (do not modify unless you *know* what you are doing)
-
 % Running mode
 defopts.Plot                    = 'off                  % Show optimization plots ("profile", "scatter", or "off")';
 defopts.Debug                   = 'off                  % Debug mode, plot additional info';
@@ -195,7 +172,6 @@ defopts.TolNoise                = 'sqrt(eps)*options.TolFun  % Min variability f
 % Initialization
 defopts.Ninit                   = 'nvars                % Number of initial objective fcn evaluations';
 defopts.InitFcn                 = '@initSobol           % Initialization function';
-% defoptions.InitFcn            = '@initLHS';
 defopts.Restarts                = '0                    % Number of restart attempts';
 defopts.CacheSize               = '1e4                  % Size of cache for storing function evaluations';
 defopts.FunValues               = '[]                   % Struct with pregress fcn evaluations (X and Y fields)';
@@ -239,7 +215,6 @@ defopts.SearchGridNumber        = '10                   % iteration scale factor
 defopts.MaxPollGridNumber       = '0                    % Maximum poll integer';
 defopts.SearchGridMultiplier    = '2                    % multiplier integer scale factor between poll and search';
 defopts.SearchSizeLocked        = 'on                   % Relative search scale factor locked to poll scale factor';
-% defopts.SearchNtry              = 'max(2*nvars,5+nvars) % Number of searches per iteration';
 defopts.SearchNtry              = 'max(nvars,floor(3+nvars/2)) % Number of searches per iteration';
 defopts.SearchMeshExpand        = '0                    % Search-triggered mesh expansion after this number of successful search rounds';
 defopts.SearchMeshIncrement     = '1                    % Mesh size increment after search-triggered mesh expansion';
@@ -292,115 +267,46 @@ defopts.HedgeGamma              = '0.125';
 defopts.HedgeBeta               = '1e-3/options.TolFun';
 defopts.HedgeDecay              = '0.1^(1/(2*nvars))';
 
-
-%% If called with 'all', return all default options
-if strcmpi(fun,'all')
-    x = defopts;
-    return;
+%% Input Size
+if isempty(x0)
+    if isempty(PLB) || isempty(PUB)
+        error('If no starting point is provided, PLB and PUB need to be specified.');
+    end    
+    x0 = NaN(size(PLB));
 end
 
-%% Check that all BADS subfolders are on the MATLAB path
-add2path();
+%% create options struct
+nvars = numel(x0);
 
-%% Input arguments
+options = setupoptions(nvars,defopts,varargin);
 
-if nargin < 3 || isempty(LB); LB = -Inf; end
-if nargin < 4 || isempty(UB); UB = Inf; end
-if nargin < 5; PLB = []; end
-if nargin < 6; PUB = []; end
-if nargin < 7; nonbcon = []; end
-if nargin < 8; options = []; end
-
-% Retro-compatibility with older interface without NONBCON
-if ~isempty(nonbcon) && isstruct(nonbcon)
-    if ~isempty(options)
-        nvarargin = numel(varargin);
-        for i = nvarargin+1:-1:2; varargin{i} = varargin{i-1}; end
-        varargin{1} = options;
-    end
-    options = nonbcon;
-    nonbcon = [];
-end
-
-%% Initialize display printing options
-
-if ~isfield(options,'Display') || isempty(options.Display)
-    options.Display = defopts.Display;
-end
-
-switch lower(options.Display(1:3))
-    case {'not','notify','notify-detailed'}
+switch lower(options.Display)
+    case {'notify','notify-detailed'}
         prnt = 1;
-    case {'non','none','off'}
+    case {'none','off'}
         prnt = 0;
-    case {'ite','all','iter','iter-detailed'}
+    case {'all','iter','iter-detailed'}
         prnt = 3;
-    case {'fin','final','final-detailed'}
+    case {'final','final-detailed'}
         prnt = 2;
     otherwise
         prnt = 1;
 end
 
-%% Initialize variables and algorithm structures
-
-if isempty(x0)
-    if prnt > 2
-        fprintf('X0 not specified. Taking the number of dimensions from PLB and PUB...');
-    end
-    if isempty(PLB) || isempty(PUB)
-        error('If no starting point is provided, PLB and PUB need to be specified.');
-    end    
-    x0 = NaN(size(PLB));
-    if prnt > 2
-        fprintf(' NVARS = %d.\n', numel(x0));
-    end
-end
-
-nvars = numel(x0);
-optimState = [];
-
-% Check boundaries and if there are fixed variables
-[LB,UB,PLB,PUB,fixidx] = boundscheck(x0,LB,UB,PLB,PUB);
-
-% If there are fixed variables, rerun BADS with lowered dimensionality
-if any(fixidx)
-    fixedvars = LB(fixidx);
-    if isempty(varargin)
-        fun_fix = @(x) fun(expandvars(x,fixidx,fixedvars));
-    else
-        fun_fix = @(x) fun(expandvars(x,fixidx,fixedvars),varargin{:});        
-    end
-    if ~isempty(nonbcon)
-        nonbcon_fix = @(x) nonbcon(expandvars(x,fixidx,fixedvars));
-    else
-        nonbcon_fix = [];
-    end
-    if isfield(options,'OutputFcn') && ~isempty(options.OutputFcn) && ...
-            (isa(options.OutputFcn,'function_handle') || ~isempty(eval(options.OutputFcn)))
-        if ischar(options.OutputFcn)
-            outputfun_tmp = eval(options.OutputFcn);
-        elseif isa(options.OutputFcn,'function_handle')
-            outputfun_tmp = options.OutputFcn;
-        else
-            error('OPTIONS.OutputFcn should be a function handle to an output function.');
-        end
-        outputfun_fix = @(x,optimState,state) outputfun_tmp(expandvars(x,fixidx,fixedvars),optimState,state);
-    else
-        outputfun_fix = [];
-    end
-    options.OutputFcn = outputfun_fix;  % Assign Output function
-        
-    % Run of BADS with lowered dimensionality
-    [x,fval,exitflag,output,optimState,gpstruct] = fixedbads(fun_fix,x0,LB,UB,PLB,PUB,nonbcon_fix,options,fixidx,nargout);            
-    return;
-end
-
-% Convert from char to function handles
+%% Input arguments
+if nargin < 3 || isempty(LB); LB = -Inf; end
+if nargin < 4 || isempty(UB); UB = Inf; end
+if nargin < 5; PLB = []; end
+if nargin < 6; PUB = []; end
+if nargin < 7; nonbcon = []; end
 if ischar(fun); fun = str2func(fun); end
 if ischar(nonbcon); nonbcon = str2func(nonbcon); end
 
-% Setup algorithm options
-options = setupoptions(nvars,defopts,options);
+%% Initialize variables and algorithm structures
+optimState = [];
+
+% Check boundaries and if there are fixed variables
+[LB,UB,PLB,PUB,~] = boundscheck(x0,LB,UB,PLB,PUB);
 
 % Output function
 outputfun = options.OutputFcn;
@@ -413,11 +319,6 @@ optimState = updateSearchBounds(optimState);
 
 % Store objective function
 optimState.fun = fun;
-if isempty(varargin)
-    funwrapper = fun;   % No additional function arguments passed
-else
-    funwrapper = @(u_) fun(u_,varargin{:});
-end
 
 % Store constraints function
 optimState.nonbcon = nonbcon;
@@ -432,7 +333,7 @@ optimState.iter = iter;
 
 % Evaluate starting point and initial mesh, determine if function is noisy
 [u,yval,fval,isFinished_flag,optimState,displayFormat] = ...
-    evalinitmesh(u0,funwrapper,optimState,options,prnt);
+    evalinitmesh(u0,fun,optimState,options,prnt);
 if ~isfinite(fval); error('Cannot find valid starting point.'); end
 exitflag = 0;
 msg = 'Optimization terminated: reached maximum number of function evaluations after initialization.';
@@ -479,7 +380,7 @@ optimState.u = u;
 % Initialize Gaussian Process (GP) structure
 if options.FitLik; gplik = []; else gplik = log(options.TolFun); end
 gpstruct = feval(options.gpdefFcn{:},nvars,gplik,optimState,options,[]);
-gpstruct.fun = funwrapper;
+gpstruct.fun = fun;
 fhyp = gpstruct.hyp;
 
 % Initialize struct with GP prediction statistics
@@ -635,7 +536,7 @@ while ~isFinished_flag
             usearch = acqu;
             
             % Evaluate function on search point
-            [ysearch,optimState] = funlogger(funwrapper,usearch,optimState,'iter');
+            [ysearch,optimState] = funlogger(fun,usearch,optimState,'iter');
             
             if ~isempty(z)
                 % Save statistics of gp prediction
@@ -925,7 +826,7 @@ while ~isFinished_flag
 
             % Evaluate function and store value
             unew = upoll(index,:);
-            [ypoll,optimState] = funlogger(funwrapper,unew,optimState,'iter');
+            [ypoll,optimState] = funlogger(fun,unew,optimState,'iter');
             
             % Remove polled vector from set
             upoll(index,:) = [];
@@ -1019,7 +920,7 @@ while ~isFinished_flag
                 % figure(iter);
                 gpstruct.ftarget = optimState.ftarget;
                 hold off;
-                landscapeplot(@(u_) funwrapper(origunits(u_,optimState)), ...
+                landscapeplot(@(u_) fun(origunits(u_,optimState)), ...
                     u, ...
                     LB, ...
                     UB, ...
@@ -1182,7 +1083,7 @@ if optimState.UncertaintyHandling && iter > 1
     % (only if FUN is returned)
     if nargout > 1
         if options.NoiseFinalSamples > 0
-            [yval_vec,fval,fsd,optimState] = FinalEstimate(u,yval,funwrapper,optimState,gpstruct,options);
+            [yval_vec,fval,fsd,optimState] = FinalEstimate(u,yval,fun,optimState,gpstruct,options);
             optimState.iterList.fval(index) = fval;
             optimState.iterList.fsd(index) = fsd;
         end
@@ -1251,7 +1152,7 @@ if nargout > 3
             
     % Return optimization struct (can be reused in future runs)
     if nargout > 4
-        [~,optimState] = funlogger(funwrapper,u,optimState,'done');
+        [~,optimState] = funlogger(fun,u,optimState,'done');
     end
     
     % Compute total running time and fractional overhead
@@ -1541,31 +1442,7 @@ xprime(:,~fixidx) = x;
 xprime(:,fixidx) = repmat(fixvals, [n 1]);
 
 end
-%--------------------------------------------------------------------------
-function add2path()
-%ADD2PATH Adds BADS subfolders to MATLAB path.
 
-% subfolders = {'acq','gpdef','gpml_fast','init','poll','search','utils','warp','gpml-matlab-v3.6-2015-07-07'};
-subfolders = {'acq','gpdef','gpml_fast','init','poll','search','utils','gpml-matlab-v3.6-2015-07-07'};
-pathCell = regexp(path, pathsep, 'split');
-baseFolder = fileparts(mfilename('fullpath'));
-
-onPath = true;
-for iFolder = 1:numel(subfolders)
-    folder = [baseFolder,filesep,subfolders{iFolder}];    
-    if ispc  % Windows is not case-sensitive
-      onPath = onPath & any(strcmpi(folder, pathCell));
-    else
-      onPath = onPath & any(strcmp(folder, pathCell));
-    end
-end
-
-% ADDPATH is slow, call it only if folders are not on path
-if ~onPath
-    addpath(genpath(fileparts(mfilename('fullpath'))));
-end
-
-end
 
 %--------------------------------------------------------------------------
 % HISTORY
