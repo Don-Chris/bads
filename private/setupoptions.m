@@ -114,12 +114,14 @@ end
 validEntries = fieldnames(options);
 
 % Loop over each input name-value pair, check whether name is valid and overwrite fieldname in options structure.
-for ii = 1:2:length(inputArgs)
+ii = 1;
+while ii <=length(inputArgs)
     entry = inputArgs{ii};
     
     [isValid,validEntry] = isValidEntry(validEntries,entry,fcnName,doWarning);
     if ischar(entry) && isValid
         options.(validEntry) = inputArgs{ii+1};
+        ii = ii + 2;
         
     elseif isstruct(entry)
         fieldNames = fieldnames(entry);
@@ -130,8 +132,9 @@ for ii = 1:2:length(inputArgs)
                 options.(validEntry) = entry.(subentry);
             end
         end
+        ii = ii + 1;
     else
-        continue;
+        ii = ii + 1;
     end
 end
 end
@@ -140,10 +143,16 @@ function [bool,validEntry] = isValidEntry(validEntries, input, fcnName,doWarning
 % allow input of an options structure that overwrites existing fieldnames with its own, for increased flexibility
 bool = false;
 validEntry = '';
-valIdx = strcmpi(input,validEntries);
-if nnz(valIdx) == 0 && ~isstruct(input)
-    valIdx = contains(validEntries,input,'IgnoreCase',true);
+valIdx = strcmp(input,validEntries); % Check case sensitive
+
+if nnz(valIdx) == 0 && ~isstruct(input) && ischar(input)
+    valIdx = strcmpi(input,validEntries); % Check case insensitive
 end
+
+if nnz(valIdx) == 0 && ~isstruct(input) && ischar(input)
+    valIdx = contains(validEntries,input,'IgnoreCase',true); % Check case insensitive
+end
+
 if nnz(valIdx) > 1 && doWarning
     strings = [validEntries(1); strcat(',', validEntries(2:end)) ] ; % removes ' ' at the end when concatenating
     longString = [strings{:}];
@@ -152,7 +161,7 @@ if nnz(valIdx) > 1 && doWarning
 elseif nnz(valIdx) > 0 % All else options
     validEntry = validEntries{valIdx};
     bool = true;
-elseif doWarning && ~isstruct(input)
+elseif doWarning && ~isstruct(input) && ischar(input)
     strings = [validEntries(1); strcat(',', validEntries(2:end)) ] ; % removes ' ' at the end when concatenating
     longString = [strings{:}];
     longString = strrep(longString,',',', ');
