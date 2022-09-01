@@ -1,5 +1,11 @@
 # Bayesian Adaptive Direct Search (BADS) - v1.0.6
 
+## Changes to the original:
+- a better inferface for changing the options added
+- function call changed to ```[X,FVAL] = bads(FUN,X0,LB,UB,PLB,PUB,[],'option1', value1, 'option2', value2, ...); ```
+- better debugging of the code, less cluttered 
+- ```bads_init.m``` and ```bads_exit.m``` created for adding all folders to the workspace/ removing all folders.
+
 **News:** 
 - If you are interested in Bayesian model fitting, check out [Variational Bayesian Monte Carlo (VBMC)](https://github.com/lacerbi/vbmc), a simple and user-friendly toolbox for Bayesian posterior and model inference that we published at NeurIPS (2018, 2020).
 - The BADS paper [[1](#reference)] has been accepted for a poster presentation at [NeurIPS 2017](https://papers.nips.cc/paper/6780-practical-bayesian-optimization-for-model-fitting-with-bayesian-adaptive-direct-search)! (20.9% acceptance rate this year, for a total of 3240 submissions)
