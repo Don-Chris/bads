@@ -1,4 +1,4 @@
-function [x,fval,exitflag,output,optimState,gpstruct] = bads(fun,x0,LB,UB,PLB,PUB,nonbcon,varargin)
+function [x,fval,exitflag,output,optimState,gpstruct] = bads(fun_in,x0,LB,UB,PLB,PUB,nonbcon,varargin)
 %BADS Constrained optimization using Bayesian Adaptive Direct Search (v1.0.6)
 %   BADS attempts to solve problems of the form:
 %       min F(X)  subject to:  LB <= X <= UB
@@ -139,6 +139,39 @@ function [x,fval,exitflag,output,optimState,gpstruct] = bads(fun,x0,LB,UB,PLB,PU
 %% Start timer
 
 t0 = tic;
+
+%% Input arguments
+if nargin < 3 || isempty(LB); LB = -Inf; end
+if nargin < 4 || isempty(UB); UB = Inf; end
+if nargin < 5; PLB = []; end
+if nargin < 6; PUB = []; end
+if nargin < 7; nonbcon = []; end
+if ischar(fun_in); fun_in = str2func(fun_in); end
+if ischar(nonbcon); nonbcon = str2func(nonbcon); end
+
+%% Initialize variables and algorithm structures
+optimState = [];
+
+% Check boundaries and if there are fixed variables
+[LB,UB,PLB,PUB,fixed_variables] = boundscheck(x0,LB,UB,PLB,PUB);
+
+% Remove fixed variables
+x = x0;
+x(fixed_variables) = LB(fixed_variables);
+x0 = x0(~fixed_variables);
+LB = LB(~fixed_variables);
+UB = UB(~fixed_variables);
+PLB = PLB(~fixed_variables);
+PUB = PUB(~fixed_variables);
+
+% Set Cost Function
+if nnz(fixed_variables) > 0
+    % Create a Wrapper Function that inputs the fixed_variables
+    fun = @(opt_param) costFunction(opt_param,x0,fixed_variables, fun_in);
+else
+    % no change
+    fun = fun_in;
+end
 
 
 %% Basic default options
@@ -293,26 +326,13 @@ switch lower(options.Display)
         prnt = 1;
 end
 
-%% Input arguments
-if nargin < 3 || isempty(LB); LB = -Inf; end
-if nargin < 4 || isempty(UB); UB = Inf; end
-if nargin < 5; PLB = []; end
-if nargin < 6; PUB = []; end
-if nargin < 7; nonbcon = []; end
-if ischar(fun); fun = str2func(fun); end
-if ischar(nonbcon); nonbcon = str2func(nonbcon); end
 
 %% Initialize variables and algorithm structures
-optimState = [];
-
-% Check boundaries and if there are fixed variables
-[LB,UB,PLB,PUB,~] = boundscheck(x0,LB,UB,PLB,PUB);
-
 % Output function
 outputfun = options.OutputFcn;
 
 % Setup and transform variables
-[u0,LB,UB,PLB,PUB,MeshSizeInteger,optimState] = ...
+[u0,LB,UB,~,~,MeshSizeInteger,optimState] = ...
     setupvars(x0,LB,UB,PLB,PUB,optimState,nonbcon,options,prnt);
     
 optimState = updateSearchBounds(optimState);
@@ -1095,7 +1115,7 @@ if ~isempty(outputfun)
 end
 
 % Convert back to original space
-x = origunits(u,optimState);
+x(~fixed_variables) = origunits(u,optimState);
 
 % Print final message
 if prnt > 1
@@ -1442,7 +1462,11 @@ xprime(:,~fixidx) = x;
 xprime(:,fixidx) = repmat(fixvals, [n 1]);
 
 end
-
+%--------------------------------------------------------------------------
+function cost = costFunction(opt_param,x0,fixed_variables, fcn)
+x0(~fixed_variables) = opt_param;
+cost = fcn(x0);
+end
 
 %--------------------------------------------------------------------------
 % HISTORY
